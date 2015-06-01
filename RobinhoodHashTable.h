@@ -3,6 +3,12 @@
 #include <functional>
 #include <vector>
 
+/*
+ * Robinhood HashTable, see:
+ * http://sebastiansylvan.com/2013/05/08/robin-hood-hashing-should-be-your-default-hash-table-implementation/
+ *
+ */
+
 template<class Key, class Val, class Hash = std::hash<Key>,
          class KeyEqual = std::equal_to<Key>>
 struct RobinhoodHashTable {
