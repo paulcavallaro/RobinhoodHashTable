@@ -15,6 +15,7 @@ struct RobinhoodHashTable {
 
   RobinhoodHashTable(size_t size) :
     m_hasher(),
+    m_keyeq(),
     m_size(0),
     m_cap(size),
     m_keys(size),
@@ -69,7 +70,7 @@ struct RobinhoodHashTable {
         // that every key on its insertion probe evicts any key that has a
         // shorter probe distance.
         return -1;
-      } else if (elem_hash(pos) == hash && m_keys[pos] == key) {
+      } else if (elem_hash(pos) == hash && m_keyeq(m_keys[pos], key)) {
         return pos;
       }
 
@@ -166,6 +167,7 @@ struct RobinhoodHashTable {
   }
 
   Hash m_hasher;
+  KeyEqual m_keyeq;
   size_t m_size;
   size_t m_cap;
   std::vector<Val> m_vals;
