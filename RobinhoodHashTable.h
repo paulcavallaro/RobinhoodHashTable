@@ -1,6 +1,7 @@
+#include <cassert>
+#include <cstddef>
 #include <functional>
 #include <vector>
-#include <cstddef>
 
 template<class Key, class Val, class Hash = std::hash<Key>,
          class KeyEqual = std::equal_to<Key>>
@@ -8,42 +9,48 @@ struct RobinhoodHashTable {
 
   RobinhoodHashTable(size_t size) :
     m_hasher(),
-    m_size(size),
+    m_size(0),
+    m_cap(size),
     m_keys(size),
     m_vals(size),
-    m_hashes(size)
-  {}
+    m_hashes(size, 0)
+  {
+    assert(size % 2 == 0);
+    assert(size > 2);
+  }
 
   void insert(Key key, Val val) {
-    auto hash = m_hasher(key);
-    auto pos = desired_pos(hash);
-    size_t dist = 0;
-    for (;;) {
-      if (m_hashes[pos] == 0) {
-        // Empty Slot
-        construct(pos, hash, std::move(key), std::move(val));
-        return;
-      }
-      size_t existing_dist = probe_distance(elem_hash(pos), pos);
-      if (existing_dist < dist) {
-        // Current Insertion has traveled farther, Robinhood time
-        if (is_deleted(elem_hash(pos))) {
-          // Replace tombstone
-          construct(pos, hash, std::move(key), std::move(val));
-          return;
-        }
-        std::swap(hash, m_hashes[pos]);
-        std::swap(key, m_keys[pos]);
-        std::swap(val, m_vals[pos]);
-        dist = existing_dist;
-      }
-      pos = (pos + 1) % m_size;
-      ++dist;
+    if (m_size >= (3 * m_cap / 4)) {
+      grow();
+    }
+    ++m_size;
+    auto hash = hash_of(key);
+    insert_helper(key, val, hash);
+  }
+
+  bool remove(const Key& key) {
+    const auto idx = lookup_index(key);
+    if (idx == -1) {
+      return false;
+    }
+    m_keys[idx].~Key();
+    m_vals[idx].~Val();
+    m_hashes[idx] |= 0x8000000000000000;
+    --m_size;
+    return true;
+  }
+
+  const Val* lookup(const Key& key) const {
+    const auto idx = lookup_index(key);
+    if (idx == -1) {
+      return nullptr;
+    } else {
+      return m_vals.data() + idx;
     }
   }
 
-  size_t lookup_index(const Key& key) const {
-    const auto hash = m_hasher(key);
+  ssize_t lookup_index(const Key& key) const {
+    const auto hash = hash_of(key);
     auto pos = desired_pos(hash);
     size_t dist = 0;
     for (;;) {
@@ -60,26 +67,90 @@ struct RobinhoodHashTable {
         return pos;
       }
 
-      pos = (pos + 1) % m_size;
+      pos = (pos + 1) % m_cap;
       ++dist;
     }
   }
 
-  bool is_deleted(size_t hash) const {
-    // The low bit is for the tombstone marker
-    return hash & 0x1;
+  size_t size() const {
+    return m_size;
   }
 
-  size_t probe_distance(size_t desired_pos, size_t cur_pos) const {
-    return ((desired_pos + m_size) - cur_pos) % m_size;
+  size_t cap() const {
+    return m_cap;
+  }
+
+ private:
+
+  void insert_helper(Key key, Val val, size_t hash) {
+    auto pos = desired_pos(hash);
+    size_t dist = 0;
+    for (;;) {
+      // TODO(ptc) support overwriting identical keys
+      if (m_hashes[pos] == 0) {
+        // Empty Slot
+        construct(pos, hash, std::move(key), std::move(val));
+        return;
+      }
+      size_t existing_dist = probe_distance(elem_hash(pos), pos);
+      if (existing_dist < dist) {
+        if (is_deleted(elem_hash(pos))) {
+          // Replace tombstone
+          construct(pos, hash, std::move(key), std::move(val));
+          return;
+        }
+        // Current Insertion has traveled farther, Robinhood time
+        std::swap(hash, m_hashes[pos]);
+        std::swap(key, m_keys[pos]);
+        std::swap(val, m_vals[pos]);
+        dist = existing_dist;
+      }
+      pos = (pos + 1) % m_cap;
+      ++dist;
+    }
+  }
+
+  void grow() {
+    const auto old_cap = m_cap;
+    m_cap = m_cap << 1;
+    std::vector<Key> tmp_keys(std::move(m_keys));
+    std::vector<Val> tmp_vals(std::move(m_vals));
+    std::vector<size_t> tmp_hashes(std::move(m_hashes));
+    m_keys = std::vector<Key>(m_cap);
+    m_vals = std::vector<Val>(m_cap);
+    m_hashes = std::vector<size_t>(m_cap, 0);
+    for (size_t i = 0; i < old_cap; i++) {
+      const auto hash = tmp_hashes[i];
+      if (!is_empty(hash) && !is_deleted(hash)) {
+        insert_helper(tmp_keys[i], tmp_vals[i], hash);
+      }
+    }
+  }
+
+  bool is_empty(size_t hash) const {
+    return hash == 0;
+  }
+
+  bool is_deleted(size_t hash) const {
+    return hash & 0x8000000000000000;
+  }
+
+  size_t probe_distance(size_t elem_hash, size_t cur_pos) const {
+    const size_t desired_pos = elem_hash % m_cap;
+    return ((cur_pos + m_cap) - desired_pos) % m_cap;
   }
 
   size_t desired_pos(const size_t hash) const {
-    return hash % m_size;
+    return hash % m_cap;
   }
 
   size_t elem_hash(const size_t pos) const {
     return m_hashes[pos];
+  }
+
+  size_t hash_of(const Key& key) const {
+    // Reserve top-bit for tombstone marker
+    return m_hasher(key) >> 1;
   }
 
   void construct(size_t pos, size_t hash, const Key&& key, const Val&& val) {
@@ -90,6 +161,7 @@ struct RobinhoodHashTable {
 
   Hash m_hasher;
   size_t m_size;
+  size_t m_cap;
   std::vector<Val> m_vals;
   std::vector<Key> m_keys;
   std::vector<size_t> m_hashes;
