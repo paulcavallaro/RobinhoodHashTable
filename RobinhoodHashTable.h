@@ -26,13 +26,17 @@ struct RobinhoodHashTable {
     assert(size > 2);
   }
 
-  void insert(Key key, Val val) {
+  bool insert(Key key, Val val) {
     if (m_size >= (3 * m_cap / 4)) {
       grow();
     }
-    ++m_size;
     auto hash = hash_of(key);
-    insert_helper(key, val, hash);
+    if (insert_helper(key, val, hash)) {
+      ++m_size;
+      return true;
+    } else {
+      return false;
+    }
   }
 
   bool remove(const Key& key) {
@@ -61,16 +65,17 @@ struct RobinhoodHashTable {
     auto pos = desired_pos(hash);
     size_t dist = 0;
     for (;;) {
-      if (elem_hash(pos) == 0) {
+      const auto pos_hash = elem_hash(pos);
+      if (pos_hash == 0) {
         // Uninitialized slot during probe means does not exist
         return -1;
-      } else if (dist > probe_distance(elem_hash(pos), pos)) {
+      } else if (dist > probe_distance(pos_hash, pos)) {
         // If we've found an element who is less than our current probe distance
         // then it means the key does not exist, because we keep the invariant
         // that every key on its insertion probe evicts any key that has a
         // shorter probe distance.
         return -1;
-      } else if (elem_hash(pos) == hash && m_keyeq(m_keys[pos], key)) {
+      } else if (pos_hash == hash && m_keyeq(m_keys[pos], key)) {
         return pos;
       }
 
@@ -89,28 +94,37 @@ struct RobinhoodHashTable {
 
  private:
 
-  void insert_helper(Key key, Val val, size_t hash) {
+  bool insert_helper(Key key, Val val, size_t hash) {
     auto pos = desired_pos(hash);
     size_t dist = 0;
     for (;;) {
-      // TODO(ptc) support overwriting identical keys
-      if (m_hashes[pos] == 0) {
+      const auto pos_hash = elem_hash(pos);
+      if (pos_hash == 0) {
         // Empty Slot
         construct(pos, hash, std::move(key), std::move(val));
-        return;
+        return true;
       }
-      size_t existing_dist = probe_distance(elem_hash(pos), pos);
+      size_t existing_dist = probe_distance(pos_hash, pos);
       if (existing_dist < dist) {
-        if (is_deleted(elem_hash(pos))) {
+        if (is_deleted(pos_hash)) {
           // Replace tombstone
           construct(pos, hash, std::move(key), std::move(val));
-          return;
+          return true;
         }
         // Current Insertion has traveled farther, Robinhood time
         std::swap(hash, m_hashes[pos]);
         std::swap(key, m_keys[pos]);
         std::swap(val, m_vals[pos]);
         dist = existing_dist;
+      } else if (existing_dist == dist) {
+        if (is_deleted(pos_hash)) {
+          construct(pos, hash, std::move(key), std::move(val));
+          return true;
+        }
+        if (pos_hash == hash && m_keyeq(m_keys[pos], key)) {
+          // Conflict
+          return false;
+        }
       }
       pos = (pos + 1) % m_cap;
       ++dist;
