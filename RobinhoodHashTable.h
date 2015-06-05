@@ -17,17 +17,17 @@ struct RobinhoodHashTable {
     m_hasher(),
     m_keyeq(),
     m_size(0),
-    m_cap(size),
-    m_keys(size),
-    m_vals(size),
-    m_hashes(size, 0)
+    m_cap(size)
   {
     assert(size % 2 == 0);
     assert(size > 2);
+    m_keys = static_cast<Key*>(calloc(size, sizeof(Key)));
+    m_vals = static_cast<Val*>(calloc(size, sizeof(Val)));
+    m_hashes = static_cast<size_t*>(calloc(size, sizeof(size_t)));
   }
 
   bool insert(Key key, Val val) {
-    if (m_size >= (3 * m_cap / 4)) {
+    if (m_size >= (7 * m_cap / 8)) {
       grow();
     }
     auto hash = hash_of(key);
@@ -56,7 +56,7 @@ struct RobinhoodHashTable {
     if (idx == -1) {
       return nullptr;
     } else {
-      return m_vals.data() + idx;
+      return m_vals + idx;
     }
   }
 
@@ -78,7 +78,6 @@ struct RobinhoodHashTable {
       } else if (pos_hash == hash && m_keyeq(m_keys[pos], key)) {
         return pos;
       }
-
       pos = (pos + 1) % m_cap;
       ++dist;
     }
@@ -133,19 +132,22 @@ struct RobinhoodHashTable {
 
   void grow() {
     const auto old_cap = m_cap;
-    m_cap = m_cap << 1;
-    std::vector<Key> tmp_keys(std::move(m_keys));
-    std::vector<Val> tmp_vals(std::move(m_vals));
-    std::vector<size_t> tmp_hashes(std::move(m_hashes));
-    m_keys = std::vector<Key>(m_cap);
-    m_vals = std::vector<Val>(m_cap);
-    m_hashes = std::vector<size_t>(m_cap, 0);
+    m_cap = m_cap * 2;
+    Key* tmp_keys = m_keys;
+    Val* tmp_vals = m_vals;
+    size_t* tmp_hashes = m_hashes;
+    m_keys = static_cast<Key*>(calloc(m_cap, sizeof(Key)));
+    m_vals = static_cast<Val*>(calloc(m_cap, sizeof(Val)));
+    m_hashes = static_cast<size_t*>(calloc(m_cap, sizeof(size_t)));
     for (size_t i = 0; i < old_cap; i++) {
       const auto hash = tmp_hashes[i];
       if (!is_empty(hash) && !is_deleted(hash)) {
         insert_helper(tmp_keys[i], tmp_vals[i], hash);
       }
     }
+    free(tmp_keys);
+    free(tmp_vals);
+    free(tmp_hashes);
   }
 
   bool is_empty(size_t hash) const {
@@ -170,8 +172,8 @@ struct RobinhoodHashTable {
   }
 
   size_t hash_of(const Key& key) const {
-    // Reserve top-bit for tombstone marker
-    return m_hasher(key) >> 1;
+    // Reserve top-bit for tombstone marker, always set at least one bit
+    return (m_hasher(key) & 0x7FFFFFFFFFFFFFFF) | 0x2;
   }
 
   void construct(size_t pos, size_t hash, const Key&& key, const Val&& val) {
@@ -184,7 +186,7 @@ struct RobinhoodHashTable {
   KeyEqual m_keyeq;
   size_t m_size;
   size_t m_cap;
-  std::vector<Val> m_vals;
-  std::vector<Key> m_keys;
-  std::vector<size_t> m_hashes;
+  Val* m_vals;
+  Key* m_keys;
+  size_t* m_hashes;
 };
