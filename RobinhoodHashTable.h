@@ -1,3 +1,6 @@
+#ifndef __ROBINHOOD_HASH_TABLE_H__
+#define __ROBINHOOD_HASH_TABLE_H__
+
 #include <cassert>
 #include <cstddef>
 #include <functional>
@@ -24,6 +27,19 @@ struct RobinhoodHashTable {
     m_keys = static_cast<Key*>(calloc(size, sizeof(Key)));
     m_vals = static_cast<Val*>(calloc(size, sizeof(Val)));
     m_hashes = static_cast<size_t*>(calloc(size, sizeof(size_t)));
+  }
+
+  ~RobinhoodHashTable() {
+    for (size_t i = 0; i < m_cap; i++) {
+      const auto pos_hash = elem_hash(i);
+      if (!is_deleted(pos_hash)) {
+        m_keys[i].~Key();
+        m_vals[i].~Val();
+      }
+    }
+    free(m_keys);
+    free(m_vals);
+    free(m_hashes);
   }
 
   bool insert(Key key, Val val) {
@@ -190,3 +206,5 @@ struct RobinhoodHashTable {
   Key* m_keys;
   size_t* m_hashes;
 };
+
+#endif

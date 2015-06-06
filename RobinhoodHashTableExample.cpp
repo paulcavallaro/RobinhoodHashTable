@@ -1,11 +1,27 @@
 #include "RobinhoodHashTable.h"
 #include "Benchmark.h"
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <unordered_map>
 
 size_t probe_distance(size_t desired_pos, size_t cur_pos, size_t cap) {
   return desired_pos <= cur_pos ? (cur_pos - desired_pos)
     : ((cur_pos + cap) - desired_pos);
+}
+
+constexpr size_t rangeMax = 1000000;
+constexpr size_t initSize = 800000;
+
+std::string itoa(size_t num) {
+  constexpr size_t bufSize = 50;
+  static char buf[bufSize];
+  static std::vector<std::string> cache(rangeMax);
+  if (cache[num].empty()) {
+    std::snprintf(buf, bufSize, "%lu", num);
+    cache[num] = std::string(buf);
+  }
+  return cache[num];
 }
 
 int main(int argc, char** argv) {
@@ -36,9 +52,7 @@ int main(int argc, char** argv) {
   printf("(cap): %lu (size): %lu\n", rht.cap(), rht.size());
 
   const size_t numIters = 10;
-  const size_t initSize = 80000;
-  const size_t rangeMax = 1000000;
-  printf("==std::unordered_map==\n");
+  printf("==std::unordered_map<size_t, size_t>==\n");
   timeFunc(numIters, [] {
       std::unordered_map<size_t, size_t> map(initSize);
       for (size_t i = 0; i < rangeMax; i++) {
@@ -53,7 +67,7 @@ int main(int argc, char** argv) {
         map.find(i);
       }
     });
-  printf("==RobinhoodHashTable==\n");
+  printf("==RobinhoodHashTable<size_t, size_t>==\n");
   timeFunc(numIters, [] {
       RobinhoodHashTable<size_t, size_t> rht(initSize);
       for (size_t i = 0; i < rangeMax; i++) {
@@ -66,6 +80,36 @@ int main(int argc, char** argv) {
       }
       for (size_t i = 0; i < rangeMax; i++) {
         rht.lookup(i);
+      }
+    });
+  printf("==std::unordered_map<std::string, size_t>==\n");
+  timeFunc(numIters, [] {
+      std::unordered_map<std::string, size_t> map(initSize);
+      for (size_t i = 0; i < rangeMax; i++) {
+        map.emplace(itoa(i), i * 2);
+      }
+      for (size_t i = 0; i < rangeMax; i++) {
+        if (i % 4 == 0) {
+          map.erase(itoa(i));
+        }
+      }
+      for (size_t i = 0; i < rangeMax; i++) {
+        map.find(itoa(i));
+      }
+    });
+  printf("==RobinhoodHashTable<std::string, size_t>==\n");
+  timeFunc(numIters, [] {
+      RobinhoodHashTable<std::string, size_t> rht(initSize);
+      for (size_t i = 0; i < rangeMax; i++) {
+        rht.insert(itoa(i), i * 2);
+      }
+      for (size_t i = 0; i < rangeMax; i++) {
+        if (i % 4 == 0) {
+          rht.remove(itoa(i));
+        }
+      }
+      for (size_t i = 0; i < rangeMax; i++) {
+        rht.lookup(itoa(i));
       }
     });
   return 0;
