@@ -148,7 +148,7 @@ struct RobinhoodHashTable {
 
   void grow() {
     const auto old_cap = m_cap;
-    m_cap = m_cap * 2;
+    m_cap = m_cap << 1;
     Key* tmp_keys = m_keys;
     Val* tmp_vals = m_vals;
     size_t* tmp_hashes = m_hashes;
