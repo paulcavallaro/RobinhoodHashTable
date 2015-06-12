@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cstdio>
 
 template<class T>
 void timeFunc(size_t numIters, T thunk) {

@@ -1,5 +1,5 @@
-#include "RobinhoodHashTable.h"
 #include "Benchmark.h"
+#include "RobinhoodHashTable.h"
 #include <cstdint>
 #include <cstdio>
 #include <string>
